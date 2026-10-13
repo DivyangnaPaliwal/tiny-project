@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ricart–Agrawala Simulator</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div class="eyebrow">DISTRIBUTED COMPUTING • MINI PROJECT</div>
+      <h1>Ricart–Agrawala <span>Simulator</span></h1>
+      <p>Explore distributed mutual exclusion with timestamped REQUEST and REPLY messages.</p>
+      <div class="clock-pill"><span class="pulse"></span><span id="clock">Logical clock: 0</span></div>
+    </header>
+
+    <section class="panel controls-panel">
+      <div class="section-heading">
+        <div><span class="section-kicker">CONTROL CENTER</span><h2>Run the simulation</h2></div>
+        <span class="live-badge">● LIVE SIMULATION</span>
+      </div>
+      <div class="controls">
+        <button class="btn process-btn" onclick="sendAction('/api/request/0')"><span class="button-icon">↗</span> P0 Request CS</button>
+        <button class="btn process-btn" onclick="sendAction('/api/request/1')"><span class="button-icon">↗</span> P1 Request CS</button>
+        <button class="btn process-btn" onclick="sendAction('/api/request/2')"><span class="button-icon">↗</span> P2 Request CS</button>
+        <button class="btn release-btn" onclick="sendAction('/api/release')">Release Critical Section</button>
+        <button class="btn concurrent-btn" onclick="sendAction('/api/concurrent')">Simulate Concurrent Requests</button>
+        <button class="btn reset-btn" onclick="sendAction('/api/reset')">↻ Reset</button>
+      </div>
+      <p class="hint">Tip: request access for one process, inspect the messages, then release the critical section.</p>
+    </section>
+
+    <section class="process-section">
+      <div class="section-heading">
+        <div><span class="section-kicker">NETWORK OVERVIEW</span><h2>Process status</h2></div>
+        <div class="legend"><span class="legend-dot idle"></span>Idle <span class="legend-dot waiting"></span>Waiting <span class="legend-dot active"></span>In critical section</div>
+      </div>
+      <div class="process-grid" id="process-grid"></div>
+    </section>
+
+    <section class="panel log-panel">
+      <div class="section-heading">
+        <div><span class="section-kicker">MESSAGE TRACE</span><h2>Event log</h2></div>
+        <span class="log-count" id="log-count">0 events</span>
+      </div>
+      <div class="log-box" id="log-box" aria-live="polite"></div>
+    </section>
+
+    <section class="explanation">
+      <div class="explain-icon">ⓘ</div>
+      <div><h3>How the algorithm works</h3>
+        <p>A process broadcasts a REQUEST and waits for a REPLY from every other process. A process defers a reply when it is in the critical section or its own request has higher priority. Priority is decided by <strong>(timestamp, process ID)</strong>.</p>
+      </div>
+    </section>
+    <footer>RICART–AGRAWALA SIMULATOR <span>•</span> Python + Flask + HTML + CSS</footer>
+  </main>
+  <script>
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, c => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[c]));
+
+    async function sendAction(url) {
+      try {
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json();
+        render(data);
+      } catch (error) {
+        alert('Could not contact the Python server. Make sure app.py is running.');
+      }
+    }
+
+    function render(data) {
+      document.getElementById('clock').textContent = `Logical clock: ${data.clock}`;
+      const grid = document.getElementById('process-grid');
+      grid.innerHTML = data.processes.map(p => {
+        const status = p.in_cs ? 'critical' : (p.requesting ? 'waiting' : 'idle');
+        const statusText = p.in_cs ? 'IN CRITICAL SECTION' : (p.requesting ? 'WAITING FOR REPLIES' : 'IDLE');
+        const replies = p.replies.length ? p.replies.slice().sort().map(x => `P${x}`).join(', ') : 'None';
+        const deferred = p.deferred.length ? p.deferred.slice().sort().map(x => `P${x}`).join(', ') : 'None';
+        const ts = p.request_ts === null ? '—' : p.request_ts;
+        return `<article class="process-card ${status}">
+          <div class="card-top"><div class="process-avatar">P${p.pid}</div><span class="status-chip ${status}"><i></i>${statusText}</span></div>
+          <h3>Process P${p.pid}</h3>
+          <div class="metric"><span>Request timestamp</span><strong>${ts}</strong></div>
+          <div class="metric"><span>Replies received</span><strong>${escapeHtml(replies)}</strong></div>
+          <div class="metric"><span>Deferred replies to</span><strong>${escapeHtml(deferred)}</strong></div>
+        </article>`;
+      }).join('');
+      const logBox = document.getElementById('log-box');
+      logBox.innerHTML = data.logs.map((line, i) => `<div class="log-line"><span class="log-index">${String(i + 1).padStart(2, '0')}</span><span>${escapeHtml(line)}</span></div>`).join('');
+      document.getElementById('log-count').textContent = `${data.logs.length} events`;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    fetch('/api/state').then(r => r.json()).then(render);
+  </script>
+</body>
+</html>
